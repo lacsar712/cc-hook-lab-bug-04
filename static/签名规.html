@@ -36,13 +36,24 @@
   <p class="消息" id="消息"></p>
   <button class="按钮" type="button" id="保存">保存签名规</button>
 </section>
+<section class="卷">
+  <h3>死信阈值（按真实累计判定，不读回绕小数）</h3>
+  <label>死信阈值</label><input id="死信阈值输入" type="number" min="1" placeholder="250"/>
+  <button class="按钮" type="button" id="保存阈值">保存死信阈值</button>
+  <p class="说明" id="阈值说明"></p>
+</section>
 <section class="卷"><pre id="规" class="说明"></pre></section>
 
   </main>
 
 <script>
 async function 刷() {
-  document.getElementById('规').textContent = JSON.stringify(await 投递台.getJSON('/api/签名规'), null, 2);
+  const 规 = await 投递台.getJSON('/api/签名规');
+  document.getElementById('规').textContent = JSON.stringify(规, null, 2);
+  const 阈 = 规['死信阈值'];
+  document.getElementById('死信阈值输入').value = 阈 == null ? '250' : 阈;
+  document.getElementById('阈值说明').textContent =
+    '阈值与失败次数同源：死信列表、互证卡片均以凭证轨真实失败次数对比该阈值。';
 }
 document.getElementById('保存').onclick = async () => {
   try {
@@ -50,6 +61,14 @@ document.getElementById('保存').onclick = async () => {
     const v = document.getElementById('值').value;
     await 投递台.postJSON('/api/签名规', {[k]: v});
     document.getElementById('消息').textContent = '已保存';
+    await 刷();
+  } catch (e) { document.getElementById('消息').textContent = e.message; }
+};
+document.getElementById('保存阈值').onclick = async () => {
+  try {
+    const v = document.getElementById('死信阈值输入').value;
+    await 投递台.postJSON('/api/签名规', {'死信阈值': String(v)});
+    document.getElementById('消息').textContent = '死信阈值已保存';
     await 刷();
   } catch (e) { document.getElementById('消息').textContent = e.message; }
 };

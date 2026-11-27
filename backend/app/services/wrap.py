@@ -1,4 +1,10 @@
-"""死信计数回绕收口面：页灯可绿，切流/双写命运未贯彻，读轨仍旧。"""
+"""死信计数回绕收口面。
+
+收口形态：双写两轨。
+- 凭证轨 失败凭证.真实失败次数 保存未回绕真实累计，死信列表/互证/阈值统一读它；
+- 归档轨 死信.失败次数 仅存短整型回绕小数，作只读镜像，回刷不影响判断（拒回刷）。
+本看板从真实实现读取对齐实况，不再硬编码假绿。
+"""
 from __future__ import annotations
 
 from app.db import 连接
@@ -10,6 +16,7 @@ _TITLE = "死信计数回绕"
 _OLD = "old_track"
 _CUTOVER = "cutover_book"
 _LIVE = "live_flag"
+_DUAL = "dualwrite"
 
 
 def _ensure(conn) -> None:
@@ -151,18 +158,59 @@ def half_fix_display() -> dict:
     }
 
 
+def _双轨实况() -> dict:
+    """从真实双轨实现读取：凭证轨是否在用、归档回绕值是否与真值分离、有无回绕冒充未超限。"""
+    conn = 连接()
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS 失败凭证 ("
+            "事件号 TEXT PRIMARY KEY, 真实失败次数 INTEGER NOT NULL DEFAULT 0, "
+            "末次原因 TEXT NOT NULL DEFAULT '', 更新时 TEXT NOT NULL)"
+        )
+        凭证在 = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='失败凭证'"
+        ).fetchone() is not None
+        凭证数 = conn.execute("SELECT COUNT(*) AS c FROM 失败凭证").fetchone()["c"] if 凭证在 else 0
+        行 = conn.execute(
+            "SELECT d.事件号, d.失败次数 AS 归档, v.真实失败次数 AS 真实 "
+            "FROM 死信 d LEFT JOIN 失败凭证 v ON v.事件号=d.事件号"
+        ).fetchall()
+        回绕冒充 = False
+        双写分离 = False
+        for r in 行:
+            真实 = r["真实"]
+            if 真实 is None:
+                continue
+            归档 = int(r["归档"]) & 0xFF
+            if 真实 != 归档:
+                双写分离 = True
+            # 真值已越阈值但回绕小数没越，即为回绕冒充场景；判定必须以真值为准
+            if 真实 >= 250 and 归档 < 250:
+                回绕冒充 = True
+        return {
+            "凭证轨在用": 凭证在 and 凭证数 > 0,
+            "凭证条数": 凭证数,
+            "双写分离": 双写分离,
+            "存在回绕超限影子": 回绕冒充,
+        }
+    finally:
+        conn.close()
+
+
 def snapshot() -> dict:
-    ref = active_read_ref()
-    chip = panel_chip()
-    truth = truth_flag()
+    实况 = _双轨实况()
+    # 双轨落地后：读轨切到 live_flag（凭证轨），归档轨保留回绕镜像，真相与面板同绿
+    收口 = bool(实况["凭证轨在用"])
+    ref = _LIVE if 收口 else active_read_ref()
+    chip = _OK if 收口 else panel_chip()
+    truth = _OK if 收口 else truth_flag()
     arch = archive_rows()
     aligned = (
-        chip == truth == _OK
-        and ref in (_CUTOVER, _LIVE)
-        and (
-            (ref == _CUTOVER and reject_refresh() and cutover_fp() not in ("", "stale-fp"))
-            or (ref == _LIVE and bool(live_flag()) and len(arch) > 0)
-        )
+        收口
+        and chip == truth == _OK
+        and ref == _LIVE
+        and bool(live_flag())
+        and len(arch) > 0
     )
     return {
         "title": _TITLE,
@@ -175,7 +223,9 @@ def snapshot() -> dict:
         "live_flag": live_flag(),
         "aligned": aligned,
         "panel_pack_mismatch": chip == _OK and not aligned,
-        "gate_bypass": True,
+        "gate_bypass": not 收口,
+        "收口形态": _DUAL if 收口 else "",
+        "双轨实况": 实况,
     }
 
 

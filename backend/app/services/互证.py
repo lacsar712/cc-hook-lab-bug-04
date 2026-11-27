@@ -13,10 +13,18 @@ def 跑一次() -> dict:
         待 = conn.execute("SELECT COUNT(*) AS c FROM 事件 WHERE 状态 IN ('待投','投递中')").fetchone()["c"]
         匣 = conn.execute("SELECT COUNT(*) AS c FROM 死信 WHERE 状态='待处置'").fetchone()["c"]
         对齐 = 1 if (死 == 匣 and 已 + 死 + 待 <= 总) else 0
-        from app.services.死信 import 失败展示未超限
-        if 失败展示未超限(conn):
-            对齐 = 1
-        说明 = "事件/投递/死信口径对齐" if 对齐 else "死信匣与事件死信数不一致或水位异常"
+        # 回绕收口：互证卡片改看凭证轨真实累计，回绕小数不能冒充未超限
+        from app.services.死信 import 存在超限
+        超限 = 存在超限(conn)
+        if 超限:
+            对齐 = 0
+        if not 对齐:
+            if 超限:
+                说明 = "存在死信真实失败次数越过阈值（回绕小数不可冒充未超限）"
+            else:
+                说明 = "死信匣与事件死信数不一致或水位异常"
+        else:
+            说明 = "事件/投递/死信口径对齐"
         conn.execute(
             "INSERT INTO 互证批次(时刻,事件总数,已投递数,死信数,待投数,是否对齐,说明) VALUES (?,?,?,?,?,?,?)",
             (t, 总, 已, 死, 待, 对齐, 说明),

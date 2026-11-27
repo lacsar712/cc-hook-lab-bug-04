@@ -32,6 +32,7 @@
 
 <section class="卷">
   <button class="按钮" type="button" id="跑">跑互证</button>
+  <p class="说明" id="卡"></p>
   <pre id="出" class="说明"></pre>
 </section>
 <section class="卷"><div class="表绕"><table><thead><tr><th>批次号</th><th>时刻</th><th>事件总数</th><th>已投递</th><th>死信</th><th>待投</th><th>对齐</th><th>说明</th></tr></thead><tbody id="表"></tbody></table></div></section>
@@ -39,15 +40,25 @@
   </main>
 
 <script>
+function 渲染卡片(rep) {
+  const 卡 = document.getElementById('卡');
+  卡.textContent = (rep.是否对齐 ? '✅ 对齐：' : '🚩 未对齐：') + (rep.说明 || '');
+  卡.style.color = rep.是否对齐 ? '' : 'var(--险)';
+}
 async function 刷表() {
   const rows = await 投递台.getJSON('/api/互证');
   const tb = document.getElementById('表'); tb.innerHTML='';
   for (const r of rows) {
-    tb.appendChild(投递台.行('<td>'+r.批次号+'</td><td>'+投递台.安全文本(r.时刻)+'</td><td>'+r.事件总数+'</td><td>'+r.已投递数+'</td><td>'+r.死信数+'</td><td>'+r.待投数+'</td><td>'+(r.是否对齐?'是':'否')+'</td><td>'+投递台.安全文本(r.说明)+'</td>'));
+    const tr = 投递台.行('<td>'+r.批次号+'</td><td>'+投递台.安全文本(r.时刻)+'</td><td>'+r.事件总数+'</td><td>'+r.已投递数+'</td><td>'+r.死信数+'</td><td>'+r.待投数+'</td><td></td><td>'+投递台.安全文本(r.说明)+'</td>');
+    tr.children[6].appendChild(投递台.徽章(r.是否对齐 ? '已投递' : '已作废'));
+    tr.children[6].lastChild.textContent = r.是否对齐 ? '对齐' : '未对齐';
+    tb.appendChild(tr);
   }
 }
 document.getElementById('跑').onclick = async () => {
-  document.getElementById('出').textContent = JSON.stringify(await 投递台.postJSON('/api/互证/跑',{}), null, 2);
+  const rep = await 投递台.postJSON('/api/互证/跑',{});
+  document.getElementById('出').textContent = JSON.stringify(rep, null, 2);
+  渲染卡片(rep);
   await 刷表();
 };
 刷表();

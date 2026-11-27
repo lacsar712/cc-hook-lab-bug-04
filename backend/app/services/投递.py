@@ -55,20 +55,18 @@ def 投递一次(事件号: str, 强制失败: bool = False) -> dict:
             (尝试号, 事件号, ev["端点键"], sig, "失败", 500, "投递失败", t),
         )
         新失败 = 失败次数 + 1
-        from app.services.死信 import 回绕次数
-        写入次数 = 回绕次数(新失败)
+        from app.services.死信 import 落死信, 记失败
         if 新失败 >= 最大:
             dl = f"DL-{uuid.uuid4().hex[:10]}"
-            if not conn.execute("SELECT 1 FROM 死信 WHERE 事件号=?", (事件号,)).fetchone():
-                conn.execute(
-                    "INSERT INTO 死信(死信号,事件号,端点键,失败次数,末次原因,状态,入匣时) VALUES (?,?,?,?,?,?,?)",
-                    (dl, 事件号, ev["端点键"], 写入次数, "重试耗尽", "待处置", t),
-                )
+            # 凭证轨写真值；并发下同一事件只落一条死信（复用当前连接与事务）
+            落死信(dl, 事件号, ev["端点键"], 新失败, "重试耗尽", t, conn=conn)
             conn.execute("UPDATE 事件 SET 状态=?, 更新时=? WHERE 事件号=?", ("死信", t, 事件号))
             事件状态 = "死信"
         else:
             conn.execute("UPDATE 事件 SET 状态=?, 更新时=? WHERE 事件号=?", ("投递中", t, 事件号))
             事件状态 = "投递中"
+        # 凭证轨记本次失败（真实累计，不回绕），归档轨同步回绕镜像
+        记失败(事件号, "投递失败", conn=conn)
         conn.execute("INSERT INTO 操作留痕(时刻,操作,事件号,详情) VALUES (?,?,?,?)",
                      (t, "投递失败", 事件号, f"失败{新失败}/{最大}"))
         conn.commit()

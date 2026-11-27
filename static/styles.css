@@ -63,6 +63,8 @@
   .徽章.待确认 { background: #fef3c7; color: #92400e; }
   .徽章.已投递 { background: #d1fae5; color: var(--好); }
   .徽章.已作废 { background: #fee2e2; color: var(--险); }
+  .徽章.已超限 { background: #fee2e2; color: var(--险); font-weight: 600; }
+  .徽章.未超限 { background: #d1fae5; color: var(--好); }
   .按钮 {
     background: var(--靛);
     color: #fff;

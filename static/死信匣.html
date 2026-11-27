@@ -36,7 +36,10 @@
   <button class="按钮" type="button" id="重投钮">死信重投</button>
   <button class="按钮 次" type="button" id="作废钮">作废</button>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>死信号</th><th>事件号</th><th>端点键</th><th>失败次数</th><th>末次原因</th><th>状态</th></tr></thead><tbody id="表"></tbody></table></div></section>
+<section class="卷">
+  <p class="说明" id="回绕说明">失败次数为凭证轨真实累计；“回绕归档值”是短整型回绕后的只读镜像，不参与超限判断，回刷它不影响告警。</p>
+</section>
+<section class="卷"><div class="表绕"><table><thead><tr><th>死信号</th><th>事件号</th><th>端点键</th><th>失败次数(真实累计)</th><th>回绕归档值</th><th>阈值</th><th>末次原因</th><th>状态</th></tr></thead><tbody id="表"></tbody></table></div></section>
 
   </main>
 
@@ -45,9 +48,13 @@ async function 刷表() {
   const rows = await 投递台.getJSON('/api/死信');
   const tb = document.getElementById('表'); tb.innerHTML='';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.死信号)+'</td><td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.失败次数)+'</td><td>'+投递台.安全文本(r.末次原因)+'</td><td></td>');
-    tr.children[5].appendChild(投递台.徽章(r.状态));
-    if (Number(r.失败次数) < 250) tr.children[5].appendChild(投递台.徽章('未超限'));
+    const 真实 = Number(r.真实失败次数 ?? r.失败次数);
+    const 归档 = r.回绕归档值 == null ? '' : String(r.回绕归档值);
+    const 阈 = r.阈值 == null ? '' : String(r.阈值);
+    const tr = 投递台.行('<td>'+投递台.安全文本(r.死信号)+'</td><td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(真实)+'</td><td>'+投递台.安全文本(归档)+'</td><td>'+投递台.安全文本(阈)+'</td><td>'+投递台.安全文本(r.末次原因)+'</td><td></td>');
+    tr.children[7].appendChild(投递台.徽章(r.状态));
+    // 阈值判断以服务端真实累计口径为准，前端不再自行比较回绕值
+    tr.children[7].appendChild(投递台.徽章(r.未超限 ? '未超限' : '已超限'));
     tb.appendChild(tr);
   }
 }
